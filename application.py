@@ -1,12 +1,13 @@
 from settings import tokenizer, dnc_model, MAX_SEQUENCE_LENGTH, index_to_label
+from db.news import fetch_all_news, fetch_news_by_type
 from keras.preprocessing.sequence import pad_sequences
 from data_utils.preprocess import preprocess
 from flask import request, Response
+from flask_cors import CORS
 import numpy as np
 import logging
 import flask
 import os
-
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,10 @@ def create_route(application):
                              view_func=health, methods=['GET'])
     application.add_url_rule(rule='/predict',
                              view_func=predict, methods=['POST'])
+    application.add_url_rule(rule='/news/filter',
+                             view_func=fetch_news_by_type, methods=['POST'])
+    application.add_url_rule(rule='/news',
+                             view_func=fetch_all_news, methods=['GET'])
     return application
 
 
@@ -25,8 +30,11 @@ def init_app():
 
     APP_NAME = os.getenv("APP_NAME", "PUSHNOMICS")
     ENV = os.getenv("ENV", "local")
+
     logger.info('Starting {} in {} mode'.format(APP_NAME, ENV))
     application = flask.Flask(__name__)
+
+    CORS(application)
 
     application = create_route(application)
     return application

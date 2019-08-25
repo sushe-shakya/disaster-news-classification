@@ -1,6 +1,7 @@
 from keras.preprocessing.sequence import pad_sequences
 from data_utils.preprocess import preprocess
 from keras.models import load_model
+from pymongo import MongoClient
 from keras import backend as K
 from dotenv import load_dotenv
 import logging
@@ -8,6 +9,7 @@ import pickle
 import os
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+shared_components = {'db': None}
 
 
 def setup_logging(level='INFO'):
@@ -66,6 +68,14 @@ def load_dnc_model(tokenizer_file_name: str, model_file_name: str):
     return dnc_model, tokenizer
 
 
+def setup_db():
+    uri = os.getenv("MONGO_URI")
+    db_name = os.getenv("MONGO_DBNAME")
+    client = MongoClient(uri)
+    db = client[db_name]
+    shared_components['db'] = db
+
+
 def f1(y_true, y_pred):
 
     p = precision(y_true, y_pred)
@@ -101,9 +111,19 @@ def load_index_to_label(index_to_label_filename):
     return index_to_label
 
 
+def get_required_values(records: list, keys: list):
+    result = []
+    for a in records:
+        result.append({k: v for k, v in a.items() if k in keys})
+    return result
+
+
 # Load environment variables
 ENV = os.getenv("ENV", "local")
 load_dotenv(dotenv_path=BASE_DIR + '/config/' + ENV + '.env')
+
+# setup mongo database
+setup_db()
 
 tokenizer_file_name = os.getenv("TOKENIZER")
 model_file_name = os.getenv("MODEL_NAME")
