@@ -78,7 +78,7 @@ def fetch_news_by_type():
         # Check if the records are found
         if records_fetched:
 
-            required_keys = ["text", "disasterType", "url", "date"]
+            required_keys = ["news", "disasterType", "link", "date"]
             records_fetched = get_required_values(
                 records_fetched, required_keys)
 
