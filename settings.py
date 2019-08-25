@@ -1,14 +1,34 @@
 from keras.preprocessing.sequence import pad_sequences
+from dateutil.parser import parse as date_parse
 from data_utils.preprocess import preprocess
+from datetime import datetime, timedelta
+from requests_oauthlib import OAuth1
 from keras.models import load_model
 from pymongo import MongoClient
 from keras import backend as K
 from dotenv import load_dotenv
+import logging.config
+import numpy as np
+import schedule
+import requests
 import logging
 import pickle
 import os
 
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# Load environment variables
+ENV = os.getenv("ENV", "local")
+load_dotenv(dotenv_path=BASE_DIR + '/config/' + ENV + '.env')
+load_dotenv(dotenv_path=BASE_DIR + '/secret_config/' + ENV + '.env')
+
+
+CONSUMER_KEY = os.getenv("CONSUMER_KEY")
+CONSUMER_SECRET = os.getenv("CONSUMER_SECRET")
+ACCESS_TOKEN = os.getenv("ACCESS_TOKEN")
+ACCESS_SECRET = os.getenv("ACCESS_SECRET")
+TWITTER_API = os.getenv("TWITTER_API")
+TWEET_SOURCE_USERID = os.getenv("TWEET_SOURCE_USERID").split(',')
 shared_components = {'db': None}
 
 
@@ -118,12 +138,109 @@ def get_required_values(records: list, keys: list):
     return result
 
 
-# Load environment variables
-ENV = os.getenv("ENV", "local")
-load_dotenv(dotenv_path=BASE_DIR + '/config/' + ENV + '.env')
+def fetch_latest_news(user_ids=TWEET_SOURCE_USERID):
+    """Fetch the latest news tweeted by the given twitter users"""
+
+    auth = OAuth1(CONSUMER_KEY, CONSUMER_SECRET, ACCESS_TOKEN, ACCESS_SECRET)
+
+    all_tweets = np.array([])
+
+    logger.info("Fetching latest tweets from twitter users")
+
+    for user_id in user_ids:
+        start = True
+
+        while True:
+            try:
+
+                max_id = 0
+                if start:
+                    response = requests.get(TWITTER_API, auth=auth, params={
+                                            'user_id': user_id, 'count': 200,
+                                            'tweet_mode': 'extended'})
+                    batch = response.json()
+
+                    if batch:
+                        tweets = np.array(batch)
+                        start = False
+                    else:
+                        print("Fetching Completed for {}".format(user_id))
+                        break
+
+                else:
+
+                    response = requests.get(TWITTER_API, auth=auth, params={
+                                            'user_id': user_id, 'count': 200,
+                                            'max_id': max_id - 1,
+                                            'tweet_mode': 'extended'})
+                    batch = response.json()
+
+                    if batch:
+                        tweets = np.concatenate((tweets, batch))
+                    else:
+                        print("Completed for {}".format(user_id))
+                        break
+
+                """the last id in a given batch is the max id
+                value for the next lower batch"""
+                max_id = min([a['id'] for a in batch])
+                all_tweets = np.concatenate((all_tweets, tweets))
+                logger.info("Fetched latest tweets successfully")
+
+            except Exception as e:
+                logger.info(f"Exception: {e}")
+                break
+
+    documents = []
+    for tweet in all_tweets:
+        try:
+            _ = {}
+            tweet_dte_time = date_parse(tweet["created_at"])
+            current_date_time = datetime.utcnow()
+            current_date = current_date_time.date()
+            current_hour = current_date_time.hour
+
+            c1 = tweet_dte_time.date() == current_date
+            c2 = tweet_dte_time.date() == current_date - timedelta(days=1)
+            c3 = current_hour == 0
+            c4 = tweet_dte_time.hour == current_hour - 1
+
+            if (c1 and c4) or (c2 and c3):
+
+                _["date"] = str(tweet_dte_time.date())
+                _["time"] = str(tweet_dte_time.timetz())
+
+                _["news"] = tweet["full_text"]
+                _["link"] = tweet["entities"]["urls"][0]['url']
+                _["user_id"] = tweet["user"]["id"]
+
+                documents.append(_)
+        except Exception as e:
+            logger.info(f"Exception: {e}")
+
+    try:
+        save_news_to_db(documents)
+        logger.info("Latest news saved to database successfully")
+    except Exception as e:
+        logger.info(f"Exception {e} ocurred while saving news to database")
+
+
+def save_news_to_db(documents: list):
+    db = shared_components["db"]
+    collection = db.news
+    collection.insert(documents)
+    logger.info("Saved documents to mongo db successfully")
+
+
+setup_logging()
+logger = logging.getLogger(__file__)
 
 # setup mongo database
 setup_db()
+
+# fetch the latest tweets
+# schedule.every().minute.at(":01").do(fetch_latest_news)
+fetch_latest_news()
 
 tokenizer_file_name = os.getenv("TOKENIZER")
 model_file_name = os.getenv("MODEL_NAME")
