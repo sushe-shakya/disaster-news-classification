@@ -1,6 +1,6 @@
 from keras.preprocessing.sequence import pad_sequences
-from dateutil.parser import parse as date_parse
 from data_utils.preprocess import preprocess
+from dateutil.parser import parse as date_parse
 from datetime import datetime, timedelta
 from requests_oauthlib import OAuth1
 from keras.models import load_model
@@ -138,22 +138,20 @@ def get_required_values(records: list, keys: list):
     return result
 
 
-def fetch_latest_news(user_ids=TWEET_SOURCE_USERID):
+def fetch_twitter_news(user_ids=TWEET_SOURCE_USERID, type="latest"):
     """Fetch the latest news tweeted by the given twitter users"""
 
     auth = OAuth1(CONSUMER_KEY, CONSUMER_SECRET, ACCESS_TOKEN, ACCESS_SECRET)
 
     all_tweets = np.array([])
 
-    logger.info("Fetching latest tweets from twitter users")
+    logger.info("Fetching tweets from twitter users")
 
     for user_id in user_ids:
         start = True
-
         while True:
             try:
 
-                max_id = 0
                 if start:
                     response = requests.get(TWITTER_API, auth=auth, params={
                                             'user_id': user_id, 'count': 200,
@@ -164,8 +162,9 @@ def fetch_latest_news(user_ids=TWEET_SOURCE_USERID):
                         tweets = np.array(batch)
                         start = False
                     else:
-                        print("Fetching Completed for {}".format(user_id))
+                        print("Completed for {}".format(user_id))
                         break
+                    max_id = min([a['id'] for a in batch])
 
                 else:
 
@@ -181,15 +180,13 @@ def fetch_latest_news(user_ids=TWEET_SOURCE_USERID):
                         print("Completed for {}".format(user_id))
                         break
 
-                """the last id in a given batch is the max id
-                value for the next lower batch"""
-                max_id = min([a['id'] for a in batch])
-                all_tweets = np.concatenate((all_tweets, tweets))
-                logger.info("Fetched latest tweets successfully")
+                    max_id = min([a['id'] for a in batch])
 
             except Exception as e:
-                logger.info(f"Exception: {e}")
+                print(e)
                 break
+
+        all_tweets = np.concatenate((all_tweets, tweets))
 
     documents = []
     for tweet in all_tweets:
@@ -200,13 +197,23 @@ def fetch_latest_news(user_ids=TWEET_SOURCE_USERID):
             current_date = current_date_time.date()
             current_hour = current_date_time.hour
 
-            c1 = tweet_dte_time.date() == current_date
-            c2 = tweet_dte_time.date() == current_date - timedelta(days=1)
-            c3 = current_hour == 0
-            c4 = tweet_dte_time.hour == current_hour - 1
+            if type == "latest":
+                c1 = tweet_dte_time.date() == current_date
+                c2 = tweet_dte_time.date() == current_date - timedelta(days=1)
+                c3 = current_hour == 0
+                c4 = tweet_dte_time.hour == current_hour - 1
 
-            if (c1 and c4) or (c2 and c3):
+                if (c1 and c4) or (c2 and c3):
 
+                    _["date"] = str(tweet_dte_time.date())
+                    _["time"] = str(tweet_dte_time.timetz())
+
+                    _["news"] = tweet["full_text"]
+                    _["link"] = tweet["entities"]["urls"][0]['url']
+                    _["user_id"] = tweet["user"]["id"]
+
+                    documents.append(_)
+            elif type == "all":
                 _["date"] = str(tweet_dte_time.date())
                 _["time"] = str(tweet_dte_time.timetz())
 
@@ -215,14 +222,10 @@ def fetch_latest_news(user_ids=TWEET_SOURCE_USERID):
                 _["user_id"] = tweet["user"]["id"]
 
                 documents.append(_)
+
         except Exception as e:
             logger.info(f"Exception: {e}")
-
-    try:
-        save_news_to_db(documents)
-        logger.info("Latest news saved to database successfully")
-    except Exception as e:
-        logger.info(f"Exception {e} ocurred while saving news to database")
+    return documents
 
 
 def save_news_to_db(documents: list):
@@ -230,6 +233,17 @@ def save_news_to_db(documents: list):
     collection = db.news
     collection.insert(documents)
     logger.info("Saved documents to mongo db successfully")
+
+
+def classify_news(text):
+    text = preprocess(text)
+    sequence = tokenizer.texts_to_sequences([text])
+    padded_sequence = pad_sequences(sequence,
+                                    maxlen=MAX_SEQUENCE_LENGTH)
+
+    result = dnc_model.predict(padded_sequence)
+    label = index_to_label.get(np.argmax(result))
+    return label
 
 
 setup_logging()
@@ -240,7 +254,7 @@ setup_db()
 
 # fetch the latest tweets
 # schedule.every().minute.at(":01").do(fetch_latest_news)
-fetch_latest_news()
+documents = fetch_twitter_news(type="all")
 
 tokenizer_file_name = os.getenv("TOKENIZER")
 model_file_name = os.getenv("MODEL_NAME")
@@ -248,6 +262,20 @@ MAX_SEQUENCE_LENGTH = int(os.getenv("MAX_SEQUENCE_LENGTH"))
 
 index_to_label = load_index_to_label(os.getenv("INDEX_TO_LABEL"))
 dnc_model, tokenizer = load_dnc_model(tokenizer_file_name, model_file_name)
+
+
+try:
+    logger.info("Classifying the news")
+    for document in documents:
+        news = document["news"]
+        document["disasterType"] = classify_news(news)
+    logger.info("Classified all news")
+
+    save_news_to_db(documents)
+    logger.info("News saved to database successfully")
+except Exception as e:
+    logger.info(f"Exception {e} ocurred while saving news to database")
+
 
 if __name__ == '__main__':
     pass
