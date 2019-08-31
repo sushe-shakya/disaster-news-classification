@@ -1,7 +1,5 @@
-from settings import tokenizer, dnc_model, MAX_SEQUENCE_LENGTH, index_to_label
 from db.news import fetch_all_news, fetch_news_by_type
-from keras.preprocessing.sequence import pad_sequences
-from data_utils.preprocess import preprocess
+from settings import classify_news
 from flask import request, Response
 from flask_cors import CORS
 import numpy as np
@@ -54,13 +52,8 @@ def predict():
             text = request_dict["text"]
 
             logger.info(f'Received text: {text}')
-            text = preprocess(text)
-            sequence = tokenizer.texts_to_sequences([text])
-            padded_sequence = pad_sequences(sequence,
-                                            maxlen=MAX_SEQUENCE_LENGTH)
 
-            result = dnc_model.predict(padded_sequence)
-            label = index_to_label.get(np.argmax(result))
+            label = classify_news(text)
             return Response(f"Predicted class: {label}", status=200)
 
         except Exception as e:

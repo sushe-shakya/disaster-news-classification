@@ -3,6 +3,9 @@ from bson.json_util import dumps, loads
 from flask import request, Response
 import json
 import ast
+import logging
+
+logger = logging.getLogger(__file__)
 
 
 def create_news():
@@ -61,19 +64,19 @@ def fetch_news_by_type():
     try:
         if request.json:
             body = request.json
+            logger.info(f"Request:{body}")
         else:
             raise TypeError("Invalid Request Format")
 
-        disaster_types = body["disasterTypes"]
+        disaster_type = body["disasterType"]
 
         records_fetched = []
-        for _type in disaster_types:
 
-            _ = collection.find({"disasterType": _type})
-            # Check if the records are found
-            if _.count() > 0:
-                # Prepare the response
-                records_fetched += loads(dumps(_))
+        _ = collection.find({"disasterType": disaster_type})
+        # Check if the records are found
+        if _.count() > 0:
+            # Prepare the response
+            records_fetched += loads(dumps(_))
 
         # Check if the records are found
         if records_fetched:
