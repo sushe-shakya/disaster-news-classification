@@ -7,12 +7,14 @@ from keras.models import load_model
 from pymongo import MongoClient
 from keras import backend as K
 from dotenv import load_dotenv
+from threading import Thread
 import logging.config
 import numpy as np
 import schedule
 import requests
 import logging
 import pickle
+import time
 import os
 
 
@@ -246,15 +248,34 @@ def classify_news(text):
     return label
 
 
+def fetch_and_save():
+    documents = fetch_twitter_news(type="latest")
+    try:
+        logger.info("Classifying the news")
+        for document in documents:
+            news = document["news"]
+            document["disasterType"] = classify_news(news)
+        logger.info("Classified all news")
+
+        save_news_to_db(documents)
+        logger.info("News saved to database successfully")
+    except Exception as e:
+        logger.info(f"Exception {e} ocurred while saving news to database")
+
+
+def scheduler_job():
+    # fetch the latest tweets
+    schedule.every().hour.at(":01").do(fetch_and_save)
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
+
+
 setup_logging()
 logger = logging.getLogger(__file__)
 
 # setup mongo database
 setup_db()
-
-# fetch the latest tweets
-# schedule.every().minute.at(":01").do(fetch_latest_news)
-documents = fetch_twitter_news(type="all")
 
 tokenizer_file_name = os.getenv("TOKENIZER")
 model_file_name = os.getenv("MODEL_NAME")
@@ -264,17 +285,24 @@ index_to_label = load_index_to_label(os.getenv("INDEX_TO_LABEL"))
 dnc_model, tokenizer = load_dnc_model(tokenizer_file_name, model_file_name)
 
 
-try:
-    logger.info("Classifying the news")
-    for document in documents:
-        news = document["news"]
-        document["disasterType"] = classify_news(news)
-    logger.info("Classified all news")
-
-    save_news_to_db(documents)
-    logger.info("News saved to database successfully")
-except Exception as e:
-    logger.info(f"Exception {e} ocurred while saving news to database")
+logger.info("Starting the scheduler")
+# fetch the latest tweets
+thread = Thread(target=scheduler_job)
+thread.start()
+# documents = fetch_twitter_news(type="all")
+#
+#
+# try:
+#     logger.info("Classifying the news")
+#     for document in documents:
+#         news = document["news"]
+#         document["disasterType"] = classify_news(news)
+#     logger.info("Classified all news")
+#
+#     save_news_to_db(documents)
+#     logger.info("News saved to database successfully")
+# except Exception as e:
+#     logger.info(f"Exception {e} ocurred while saving news to database")
 
 
 if __name__ == '__main__':
