@@ -16,8 +16,8 @@ def create_route(application):
                              view_func=health, methods=['GET'])
     application.add_url_rule(rule='/predict',
                              view_func=predict, methods=['POST'])
-    application.add_url_rule(rule='/news/filter',
-                             view_func=fetch_news_by_type, methods=['POST'])
+    application.add_url_rule(rule='/news/<type>',
+                             view_func=fetch_news_by_type, methods=['GET'])
     application.add_url_rule(rule='/news',
                              view_func=fetch_all_news, methods=['GET'])
     return application

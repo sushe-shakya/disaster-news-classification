@@ -55,20 +55,20 @@ def fetch_all_news():
         return Response("Error while trying to fetch the resource", status=500)
 
 
-def fetch_news_by_type():
+def fetch_news_by_type(type):
     """
        Function to fetch the news by type.
        """
     db = shared_components["db"]
     collection = db.news
     try:
-        if request.json:
-            body = request.json
-            logger.info(f"Request:{body}")
-        else:
-            raise TypeError("Invalid Request Format")
+        # if request.json:
+        #     body = request.json
+        #     logger.info(f"Request:{body}")
+        # else:
+        #     raise TypeError("Invalid Request Format")
 
-        disaster_type = body["disasterType"]
+        disaster_type = type
 
         records_fetched = []
 
