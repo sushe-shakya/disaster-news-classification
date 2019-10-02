@@ -93,6 +93,10 @@ def fetch_news_by_type():
         else:
             # No records are found
             return Response("No records are found", status=404)
+    except TypeError as e:
+        print("Exception: {}".format(e))
+        return Response("Bad request", status=400)
+
     except Exception as e:
         print("Exception: {}".format(e))
         # Error while trying to fetch the resource
