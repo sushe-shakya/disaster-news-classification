@@ -38,7 +38,7 @@ def fetch_all_news():
     collection = db.news
     try:
         # Fetch all the record(s)
-        records_fetched = collection.find()
+        records_fetched = collection.find({"disasterType":{"$ne":"none"}})
 
         # Check if the records are found
         if records_fetched.count() > 0:
