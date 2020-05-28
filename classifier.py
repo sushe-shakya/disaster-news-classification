@@ -2,7 +2,6 @@ from keras.preprocessing.sequence import pad_sequences
 from data_utils.preprocess import preprocess
 from keras.models import load_model
 from keras import backend as K
-import tensorflow as tf
 import numpy as np
 import pickle
 import os
@@ -11,6 +10,7 @@ import sys
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MAX_SEQUENCE_LENGTH = 100
+session = K.get_session()
 
 
 def load_dnc_model(tokenizer_file_name: str, model_file_name: str):
@@ -30,12 +30,15 @@ def load_dnc_model(tokenizer_file_name: str, model_file_name: str):
 
 def classify_news(text):
 
-    text = preprocess(text)
-    sequence = tokenizer.texts_to_sequences([text])
-    padded_sequence = pad_sequences(sequence,
-                                    maxlen=MAX_SEQUENCE_LENGTH)
-    result = dnc_model.predict(padded_sequence)
-    label = index_to_label.get(np.argmax(result))
+    with session.as_default():
+        with session.graph.as_default():
+            text = preprocess(text)
+            sequence = tokenizer.texts_to_sequences([text])
+            padded_sequence = pad_sequences(sequence,
+                                            maxlen=MAX_SEQUENCE_LENGTH)
+            result = dnc_model.predict(padded_sequence)
+            label = index_to_label.get(np.argmax(result))
+
     return label
 
 
