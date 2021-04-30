@@ -34,7 +34,7 @@ tensorboard==1.14.0
 tensorflow==1.14.0
 tensorflow-estimator==1.14.0
 termcolor==1.1.0
-urllib3==1.25.3
+urllib3==1.25.8
 uWSGI==2.0.18
 validators==0.13.0
 Werkzeug==0.15.5
